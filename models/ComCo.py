@@ -272,7 +272,7 @@ class ComCo(nn.Module):
         dst_node_embeddings = self.output_layer(dst_patches_data)
 
         if comp_pos_neg == 'pos':
-            self.update_node_temporal_embeddings(src_node_embeddings,dst_node_embeddings,src_node_ids, dst_node_ids)
+            self.update_node_temporal_embeddings(src_node_embeddings, dst_node_embeddings, src_node_ids, dst_node_ids)
         else:
             n_src_node_embeddings = src_node_embeddings
             n_dst_node_embeddings = dst_node_embeddings

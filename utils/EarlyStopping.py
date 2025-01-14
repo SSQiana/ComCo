@@ -26,7 +26,7 @@ class EarlyStopping(object):
             # path to additionally save the nonparametric data (e.g., tensors) in memory-based models (e.g., JODIE, DyRep, TGN)
             self.save_model_nonparametric_data_path = os.path.join(save_model_folder, f"{save_model_name}_nonparametric_data.pkl")
 
-    def step(self, metrics: list, model: nn.Module, k, n):
+    def step(self, metrics: list, model: nn.Module):
         """
         execute the early stop strategy for each evaluation process
         :param metrics: list, list of metrics, each element is a tuple (str, float, boolean) -> (metric_name, metric_value, whether higher means better)
@@ -52,7 +52,7 @@ class EarlyStopping(object):
             for metric_tuple in metrics:
                 metric_name, metric_value = metric_tuple[0], metric_tuple[1]
                 self.best_metrics[metric_name] = metric_value
-            self.save_checkpoint(model, k,n)
+            self.save_checkpoint(model)
             self.counter = 0
         # metrics are not better at the epoch
         else:
@@ -62,61 +62,25 @@ class EarlyStopping(object):
 
         return self.early_stop
 
-    # def save_checkpoint(self, model: nn.Module):
-    #     """
-    #     saves model at self.save_model_path
-    #     :param model: nn.Module
-    #     :return:
-    #     """
-    #     self.logger.info(f"save model {self.save_model_path}")
-    #     torch.save(model.state_dict(), self.save_model_path)
-    #     if self.model_name in ['JODIE', 'DyRep', 'TGN']:
-    #         torch.save(model[0].memory_bank.node_raw_messages, self.save_model_nonparametric_data_path)
-    # #
-    # def load_checkpoint(self, model: nn.Module, map_location: str = None):
-    #     """
-    #     load model at self.save_model_path
-    #     :param model: nn.Module
-    #     :param map_location: str, how to remap the storage locations
-    #     :return:
-    #     """
-    #     self.logger.info(f"load model {self.save_model_path}")
-    #     model.load_state_dict(torch.load(self.save_model_path, map_location=map_location))
-    #     if self.model_name in ['JODIE', 'DyRep', 'TGN']:
-    #         model[0].memory_bank.node_raw_messages = torch.load(self.save_model_nonparametric_data_path, map_location=map_location)
-
-
-    def save_checkpoint(self, model: nn.Module, k,n):
+    def save_checkpoint(self, model: nn.Module):
         """
-        saves model at self.save_model_path with k
+        saves model at self.save_model_path
         :param model: nn.Module
-        :param k: additional identifier for the file name
         :return:
         """
-        save_model_path_k = f"{self.save_model_path}_{k}_{n}"
-        # save_model_nonparametric_data_path_k = f"{self.save_model_nonparametric_data_path}_{k}"
-
-        self.logger.info(f"save model {save_model_path_k}")
-        torch.save(model.state_dict(), save_model_path_k)
-
+        self.logger.info(f"save model {self.save_model_path}")
+        torch.save(model.state_dict(), self.save_model_path)
         if self.model_name in ['JODIE', 'DyRep', 'TGN']:
             torch.save(model[0].memory_bank.node_raw_messages, self.save_model_nonparametric_data_path)
 
-
-    def load_checkpoint(self, model: nn.Module, k,n, map_location: str = None):
+    def load_checkpoint(self, model: nn.Module, map_location: str = None):
         """
-        load model at self.save_model_path with k
+        load model at self.save_model_path
         :param model: nn.Module
-        :param k: additional identifier for the file name
         :param map_location: str, how to remap the storage locations
         :return:
         """
-        load_model_path_k = f"{self.save_model_path}_{k}_{n}"
-        # load_model_nonparametric_data_path_k = f"{self.save_model_nonparametric_data_path}_{k}"
-
-        self.logger.info(f"load model {load_model_path_k}")
-        model.load_state_dict(torch.load(load_model_path_k, map_location=map_location))
-
+        self.logger.info(f"load model {self.save_model_path}")
+        model.load_state_dict(torch.load(self.save_model_path, map_location=map_location),False)
         if self.model_name in ['JODIE', 'DyRep', 'TGN']:
-            model[0].memory_bank.node_raw_messages = torch.load(self.save_model_nonparametric_data_path,
-                                                                map_location=map_location)
+            model[0].memory_bank.node_raw_messages = torch.load(self.save_model_nonparametric_data_path, map_location=map_location)
