@@ -73,8 +73,8 @@ class ComCo(nn.Module):
 
         self.num_nodes = self.node_raw_features.shape[0]
 
-        self.k = top_k # 采样的邻居节点数量
-        self.k1 = top_k # 选择的社区成员数量
+        self.k = top_k 
+        self.k1 = top_k 
         self.ratio = ratio
         # self.k1 = self.k
         self.num_nodes = self.node_raw_features.shape[0]
