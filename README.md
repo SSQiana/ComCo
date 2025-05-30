@@ -2,7 +2,7 @@
 Most of the used original dynamic graph datasets come from [Towards Better Evaluation for Dynamic Link Prediction](https://openreview.net/forum?id=1GVpwr2Tfdg), 
 which can be downloaded [here](https://zenodo.org/record/7213796#.Y1cO6y8r30o). 
 
-We are working to release the complete code.
+We are working to release the complete code!
 
 # Acknowledgments
 We are grateful to the authors of [DyGFormer](https://github.com/yule-BUAA/DyGLib) for making their project codes publicly available.
