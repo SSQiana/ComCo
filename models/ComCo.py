@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -69,14 +71,12 @@ class ComCo(nn.Module):
         ])
 
         self.output_layer = nn.Linear(in_features=3*self.num_channels * self.channel_embedding_dim, out_features=self.node_feat_dim, bias=True)
-        # self.output_layer1 = nn.Linear(in_features=self.num_channels * self.channel_embedding_dim, out_features=self.node_feat_dim, bias=True)
 
         self.num_nodes = self.node_raw_features.shape[0]
 
-        self.k = top_k 
-        self.k1 = top_k 
+        self.k = top_k
+        self.k1 = top_k
         self.ratio = ratio
-        # self.k1 = self.k
         self.num_nodes = self.node_raw_features.shape[0]
         self.beta_list = [beta]
         self.alpha_list = [alpha]
@@ -86,17 +86,16 @@ class ComCo(nn.Module):
         self.community_score = np.zeros((self.num_nodes, 1))
         self.community_member = np.zeros((self.num_nodes, self.k1))
         self.community_embeddings = torch.zeros(self.num_nodes, self.node_feat_dim).to(device)
-        # self.updated_node_embeddings = torch.from_numpy(node_raw_features.astype(np.float32)).to(device)
-        self.updated_node_embeddings = torch.rand_like(torch.from_numpy(node_raw_features.astype(np.float32))).to(
-            device)
-
+        self.updated_node_embeddings = torch.from_numpy(node_raw_features.astype(np.float32)).to(device)
+        # self.updated_node_embeddings = torch.rand_like(torch.from_numpy(node_raw_features.astype(np.float32))).to(
+        #     device)
 
         self.all_node_ids = np.zeros(1, dtype=np.int64)
         self.drop = nn.Dropout(dropout)
 
     def clear_memory(self):
-        self.updated_node_embeddings = torch.rand_like(self.updated_node_embeddings)
-        # self.updated_node_embeddings = self.updated_node_embeddings.data.zero_()
+        # self.updated_node_embeddings = torch.rand_like(self.updated_node_embeddings)
+        self.updated_node_embeddings = self.updated_node_embeddings.data.zero_()
         self.community_embeddings = self.community_embeddings.data.zero_()
         self.community_score = np.zeros((self.num_nodes, 1))
         self.community_member = np.zeros((self.num_nodes, self.k1))
@@ -135,11 +134,13 @@ class ComCo(nn.Module):
         # get the first-hop neighbors of source and destination nodes
         # three lists to store source nodes' first-hop neighbor ids, edge ids and interaction timestamp information, with batch_size as the list length
         src_nodes_neighbor_ids_list, src_nodes_edge_ids_list, src_nodes_neighbor_times_list = \
-            self.neighbor_sampler.get_all_first_hop_neighbors(node_ids=src_node_ids, node_interact_times=node_interact_times)
+            self.neighbor_sampler.get_all_first_hop_neighbors(node_ids=src_node_ids,
+                                                              node_interact_times=node_interact_times)
 
         # three lists to store destination nodes' first-hop neighbor ids, edge ids and interaction timestamp information, with batch_size as the list length
         dst_nodes_neighbor_ids_list, dst_nodes_edge_ids_list, dst_nodes_neighbor_times_list = \
-            self.neighbor_sampler.get_all_first_hop_neighbors(node_ids=dst_node_ids, node_interact_times=node_interact_times)
+            self.neighbor_sampler.get_all_first_hop_neighbors(node_ids=dst_node_ids,
+                                                              node_interact_times=node_interact_times)
 
         # pad the sequences of first-hop neighbors for source and destination nodes
         # src_padded_nodes_neighbor_ids, ndarray, shape (batch_size, src_max_seq_length)
@@ -234,10 +235,10 @@ class ComCo(nn.Module):
         patches_data = patches_data.reshape(batch_size, src_num_patches + dst_num_patches, self.num_channels * self.channel_embedding_dim)
         self.community_embeddings = self.updated_node_embeddings
 
-        final_community_center, final_community_member, final_community_embeddings, batch_community_embeddings ,temp_community_embeddings= \
-            self.tppr_finder.streaming_topk(self.updated_node_embeddings.data.clone(), self.community_score,
+        temp_community_embeddings = self.tppr_finder.streaming_topk(self.updated_node_embeddings.data.clone(), self.community_score,
                                             self.community_member, self.community_embeddings.data.clone(),
                                             np.hstack((src_node_ids, dst_node_ids)), node_interact_times, edge_ids)
+
         self.community_embeddings = temp_community_embeddings
 
         # Tensor, shape (batch_size, src_num_patches + dst_num_patches, num_channels * channel_embedding_dim)
@@ -272,34 +273,45 @@ class ComCo(nn.Module):
         dst_node_embeddings = self.output_layer(dst_patches_data)
 
         if comp_pos_neg == 'pos':
-            self.update_node_temporal_embeddings(src_node_embeddings,dst_node_embeddings,src_node_ids, dst_node_ids)
-        else:
-            n_src_node_embeddings = src_node_embeddings
-            n_dst_node_embeddings = dst_node_embeddings
+            self.update_node_temporal_embeddings(src_node_embeddings, dst_node_embeddings, src_node_ids, dst_node_ids)
 
         return src_node_embeddings, dst_node_embeddings
 
+    # def update_node_temporal_embeddings(self, src_node_embeddings, dst_node_embeddings, src_node_ids, dst_node_ids):
+    #     updated_node_embeddings = self.updated_node_embeddings.clone()
+    #     ratio = self.ratio
+    #     num_samples = int(len(src_node_ids) * ratio)
+    #
+    #     src_indices = np.random.choice(len(src_node_ids), num_samples, replace=False)
+    #     dst_indices = np.random.choice(len(dst_node_ids), num_samples, replace=False)
+    #
+    #     for i in range(num_samples):
+    #         if i % 2 == 0:
+    #             src_index = src_indices[i]
+    #             src_emb = self.updated_node_embeddings[src_node_ids[src_index]].data
+    #             src_new = self.update_embeddings(src_node_embeddings[src_index], src_emb)
+    #             updated_node_embeddings[src_node_ids[src_index]] = src_new + self.drop(src_emb)
+    #             self.updated_node_embeddings[src_node_ids[src_index]] = src_new.data
+    #         else:
+    #             dst_index = dst_indices[i]
+    #             dst_emb = self.updated_node_embeddings[dst_node_ids[dst_index]].data
+    #             dst_new = self.update_embeddings(dst_node_embeddings[dst_index], dst_emb)
+    #             updated_node_embeddings[dst_node_ids[dst_index]] = dst_new + self.drop(dst_emb)
+    #             self.updated_node_embeddings[dst_node_ids[dst_index]] = dst_new.data
+
+
     def update_node_temporal_embeddings(self, src_node_embeddings, dst_node_embeddings, src_node_ids, dst_node_ids):
-        updated_node_embeddings = self.updated_node_embeddings.clone()  # 克隆以避免就地修改
-        ratio = self.ratio
-        num_samples = int(len(src_node_ids) * ratio)
+        updated_node_embeddings = self.updated_node_embeddings.clone()
+        src_emb = self.updated_node_embeddings[src_node_ids].data
+        src_new = self.update_embeddings(src_node_embeddings, src_emb)
+        updated_node_embeddings[src_node_ids] = src_new + self.drop(src_emb)
+        self.updated_node_embeddings[src_node_ids] = src_new.data
 
-        src_indices = np.random.choice(len(src_node_ids), num_samples, replace=False)
-        dst_indices = np.random.choice(len(dst_node_ids), num_samples, replace=False)
+        dst_emb = self.updated_node_embeddings[dst_node_ids].data
+        dst_new = self.update_embeddings(dst_node_embeddings, dst_emb)
+        updated_node_embeddings[dst_node_ids] = dst_new + self.drop(dst_emb)
+        self.updated_node_embeddings[dst_node_ids] = dst_new.data
 
-        for i in range(num_samples):
-            if i % 2 == 0:
-                src_index = src_indices[i]
-                src_emb = self.updated_node_embeddings[src_node_ids[src_index]].data
-                src_new = self.update_embeddings(src_node_embeddings[src_index], src_emb)
-                updated_node_embeddings[src_node_ids[src_index]] = src_new + self.drop(src_emb)
-                self.updated_node_embeddings[src_node_ids[src_index]] = src_new.data
-            else:
-                dst_index = dst_indices[i]
-                dst_emb = self.updated_node_embeddings[dst_node_ids[dst_index]].data
-                dst_new = self.update_embeddings(dst_node_embeddings[dst_index], dst_emb)
-                updated_node_embeddings[dst_node_ids[dst_index]] = dst_new + self.drop(dst_emb)
-                self.updated_node_embeddings[dst_node_ids[dst_index]] = dst_new.data
 
     def generate_graph_embeddings(self, patches_data, sequence_length, comp_pos_neg):
         patch_size = patches_data.shape[0]
@@ -323,6 +335,7 @@ class ComCo(nn.Module):
             graph_embeddings.append(temp)
         graph_embeddings = torch.stack(graph_embeddings)
         return graph_embeddings
+
 
     def pad_sequences(self, node_ids: np.ndarray, node_interact_times: np.ndarray, nodes_neighbor_ids_list: list, nodes_edge_ids_list: list,
                       nodes_neighbor_times_list: list, patch_size: int = 1, max_input_sequence_length: int = 256):
@@ -399,7 +412,7 @@ class ComCo(nn.Module):
         return padded_nodes_neighbor_node_raw_features, padded_nodes_edge_raw_features, padded_nodes_neighbor_time_features
 
     def get_patches(self, padded_nodes_neighbor_node_raw_features: torch.Tensor, padded_nodes_edge_raw_features: torch.Tensor,
-                    padded_nodes_neighbor_time_features: torch.Tensor, padded_nodes_neighbor_co_occurrence_features: torch.Tensor = None, patch_size: int = 1):
+                    padded_nodes_neighbor_time_features: torch.Tensor, padded_nodes_neighbor_co_occurrence_features, patch_size: int = 1):
         """
         get the sequence of patches for nodes
         :param padded_nodes_neighbor_node_raw_features: Tensor, shape (batch_size, max_seq_length, node_feat_dim)
@@ -547,82 +560,85 @@ class NeighborCooccurrenceEncoder(nn.Module):
 
 
 class TransformerEncoder(nn.Module):
-
     def __init__(self, attention_dim: int, num_heads: int, dropout: float = 0.1):
         """
-        Transformer encoder.
-        :param attention_dim: int, dimension of the attention vector
-        :param num_heads: int, number of attention heads
-        :param dropout: float, dropout rate
+        Transformer Encoder Module.
+
+        Args:
+            attention_dim (int): Dimension of attention embeddings.
+            num_heads (int): Number of attention heads.
+            dropout (float): Dropout rate.
         """
         super(TransformerEncoder, self).__init__()
-        # use the MultiheadAttention implemented by PyTorch
-        self.multi_head_attention = MultiheadAttention(embed_dim=attention_dim, num_heads=num_heads, dropout=dropout)
-
+        self.multi_head_attention = MultiheadAttention(
+            embed_dim=attention_dim,
+            num_heads=num_heads,
+            dropout=dropout
+        )
         self.dropout = nn.Dropout(dropout)
-
         self.linear_layers = nn.ModuleList([
-            nn.Linear(in_features=attention_dim, out_features=4 * attention_dim),
-            nn.Linear(in_features=4 * attention_dim, out_features=attention_dim)
+            nn.Linear(attention_dim, 4 * attention_dim),   # Expansion layer
+            nn.Linear(4 * attention_dim, attention_dim)    # Compression layer
         ])
         self.norm_layers = nn.ModuleList([
             nn.LayerNorm(attention_dim),
             nn.LayerNorm(attention_dim)
         ])
 
-    def forward(self, node_inputs: torch.Tensor, mesco_inputs, graph_inputs):
+    def forward(self, node_inputs: torch.Tensor, mesco_inputs: torch.Tensor, graph_inputs: torch.Tensor):
         """
-        encode the inputs by Transformer encoder
-        :param inputs: Tensor, shape (batch_size, num_patches, self.attention_dim)
-        :return:
+        Args:
+            node_inputs (Tensor): Input tensor for nodes, shape (batch_size, seq_len, attention_dim).
+            mesco_inputs (Tensor): Intermediate tensor for cross-level interaction.
+            graph_inputs (Tensor): Input tensor for graph-level features.
+
+        Returns:
+            Tuple[Tensor, Tensor, Tensor]:
+                - Updated node representations.
+                - Updated mesco representations.
+                - Updated graph-level hidden states.
         """
-        # note that the MultiheadAttention module accept input data with shape (seq_length, batch_size, input_dim), so we need to transpose the input
-        # Tensor, shape (num_patches, batch_size, self.attention_dim)
-        transposed_node_inputs = node_inputs.transpose(0, 1)
-        transposed_mesco_inputs = mesco_inputs.transpose(0, 1)
-        transposed_graph_inputs = graph_inputs.transpose(0, 1)
+        # Transpose inputs to (seq_len, batch_size, dim) for attention module
+        node_inputs_t = node_inputs.transpose(0, 1)
+        mesco_inputs_t = mesco_inputs.transpose(0, 1)
+        graph_inputs_t = graph_inputs.transpose(0, 1)
 
-        # Tensor, shape (batch_size, num_patches, self.attention_dim)
-        transposed_node_inputs = self.norm_layers[0](transposed_node_inputs)
-        transposed_mesco_inputs = self.norm_layers[0](transposed_mesco_inputs)
-        transposed_graph_inputs = self.norm_layers[0](transposed_graph_inputs)
+        # Apply first layer normalization
+        node_inputs_t = self.norm_layers[0](node_inputs_t)
+        mesco_inputs_t = self.norm_layers[0](mesco_inputs_t)
+        graph_inputs_t = self.norm_layers[0](graph_inputs_t)
 
-        # Tensor, shape (batch_size, num_patches, self.attention_dim)
-        hidden_node_states = self.multi_head_attention(query=transposed_mesco_inputs, key=transposed_node_inputs, value=transposed_node_inputs)[0].transpose(0, 1)
-        hidden_mesco_states = self.multi_head_attention(query=transposed_graph_inputs, key=transposed_mesco_inputs, value=transposed_mesco_inputs)[0].transpose(0, 1)
+        # Attention: node -> mesco
+        hidden_node_states = self.multi_head_attention(
+            query=mesco_inputs_t,
+            key=node_inputs_t,
+            value=node_inputs_t
+        )[0].transpose(0, 1)
 
+        # Attention: mesco -> graph
+        hidden_mesco_states = self.multi_head_attention(
+            query=graph_inputs_t,
+            key=mesco_inputs_t,
+            value=mesco_inputs_t
+        )[0].transpose(0, 1)
 
-        # Tensor, shape (batch_size, num_patches, self.attention_dim)
-        mesco_outputs = mesco_inputs + self.dropout(hidden_mesco_states)
+        # Residual connection + dropout
         node_outputs = node_inputs + self.dropout(hidden_node_states)
-        # Tensor, shape (batch_size, num_patches, self.attention_dim)
-        hidden_states = self.linear_layers[1](self.dropout(F.gelu(self.linear_layers[0](self.norm_layers[1](node_outputs)))))
-        hidden_states1 = self.linear_layers[1](self.dropout(F.gelu(self.linear_layers[0](self.norm_layers[1](mesco_outputs)))))
-        hidden_states2 = self.linear_layers[1](self.dropout(F.gelu(self.linear_layers[0](self.norm_layers[1](graph_inputs)))))
+        mesco_outputs = mesco_inputs + self.dropout(hidden_mesco_states)
 
-        # Tensor, shape (batch_size, num_patches, self.attention_dim)
-        outputs = node_outputs + self.dropout(hidden_states)
-        outputs1 = mesco_outputs + self.dropout(hidden_states1)
+        # Feed-forward network with residual connection
+        hidden_states_node = self.linear_layers[1](
+            self.dropout(F.gelu(self.linear_layers[0](self.norm_layers[1](node_outputs))))
+        )
+        hidden_states_mesco = self.linear_layers[1](
+            self.dropout(F.gelu(self.linear_layers[0](self.norm_layers[1](mesco_outputs))))
+        )
+        hidden_states_graph = self.linear_layers[1](
+            self.dropout(F.gelu(self.linear_layers[0](self.norm_layers[1](graph_inputs))))
+        )
 
-        # outputs = torch.concat((outputs, outputs1, outputs1), dim=2)
-        return outputs, outputs1, hidden_states2
-    # def forward(self, node_inputs: torch.Tensor, mesco_inputs, graph_inputs):
-    #     """
-    #     encode the inputs by Transformer encoder
-    #     :param inputs: Tensor, shape (batch_size, num_patches, self.attention_dim)
-    #     :return:
-    #     """
-    #     # note that the MultiheadAttention module accept input data with shape (seq_length, batch_size, input_dim), so we need to transpose the input
-    #     # Tensor, shape (num_patches, batch_size, self.attention_dim)
-    #     transposed_inputs = node_inputs.transpose(0, 1)
-    #     # Tensor, shape (batch_size, num_patches, self.attention_dim)
-    #     transposed_inputs = self.norm_layers[0](transposed_inputs)
-    #     # Tensor, shape (batch_size, num_patches, self.attention_dim)
-    #     hidden_states = self.multi_head_attention(query=transposed_inputs, key=transposed_inputs, value=transposed_inputs)[0].transpose(0, 1)
-    #     # Tensor, shape (batch_size, num_patches, self.attention_dim)
-    #     outputs = node_inputs + self.dropout(hidden_states)
-    #     # Tensor, shape (batch_size, num_patches, self.attention_dim)
-    #     hidden_states = self.linear_layers[1](self.dropout(F.gelu(self.linear_layers[0](self.norm_layers[1](outputs)))))
-    #     # Tensor, shape (batch_size, num_patches, self.attention_dim)
-    #     outputs = outputs + self.dropout(hidden_states)
-    #     return outputs
+        # Final residual outputs
+        final_node_outputs = node_outputs + self.dropout(hidden_states_node)
+        final_mesco_outputs = mesco_outputs + self.dropout(hidden_states_mesco)
+
+        return final_node_outputs, final_mesco_outputs, hidden_states_graph
