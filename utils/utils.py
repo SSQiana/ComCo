@@ -164,15 +164,16 @@ class NeighborSampler:
         """
         # return index i, which satisfies list[i - 1] < v <= list[i]
         # return 0 for the first position in self.nodes_neighbor_times since the value at the first position is empty
+        a = len(self.nodes_neighbor_times)
+        assert node_id < len(self.nodes_neighbor_times), f'Node id {node_id} should be less than the number of nodes {a}!'
+
         i = np.searchsorted(self.nodes_neighbor_times[node_id], interact_time)
 
         if return_sampled_probabilities:
-            return self.nodes_neighbor_ids[node_id][:i], self.nodes_edge_ids[node_id][:i], self.nodes_neighbor_times[
-                                                                                               node_id][:i], \
+            return self.nodes_neighbor_ids[node_id][:i], self.nodes_edge_ids[node_id][:i], self.nodes_neighbor_times[node_id][:i], \
                    self.nodes_neighbor_sampled_probabilities[node_id][:i]
         else:
-            return self.nodes_neighbor_ids[node_id][:i], self.nodes_edge_ids[node_id][:i], self.nodes_neighbor_times[
-                                                                                               node_id][:i], None
+            return self.nodes_neighbor_ids[node_id][:i], self.nodes_edge_ids[node_id][:i], self.nodes_neighbor_times[node_id][:i], None
 
     def get_historical_neighbors(self, node_ids: np.ndarray, node_interact_times: np.ndarray, num_neighbors: int = 20):
         """
@@ -386,9 +387,9 @@ class NeighborSampler:
             while j < len(nodes_neighbor_ids_list[0][i]):
                 if nodes_neighbor_ids_list[0][i][j] in nodes_neighbor_ids_list[0][i][:j]:
                     index = nodes_neighbor_ids_list[0][i][:j].index(nodes_neighbor_ids_list[0][i][j])
-                    nodes_neighbor_ids_list[0][i].pop(index)  # 去掉重复的节点索引
-                    nodes_edge_ids_list[0][i].pop(index)  # 去掉重复的节点对应边索引
-                    nodes_neighbor_times_list[0][i].pop(index)  # 去掉重复的节点对应时间索引
+                    nodes_neighbor_ids_list[0][i].pop(index)
+                    nodes_edge_ids_list[0][i].pop(index)
+                    nodes_neighbor_times_list[0][i].pop(index)
                 else:
                     j = j + 1
 
@@ -411,7 +412,6 @@ class NeighborSampler:
                                                                           -len(last_hop_node_neighbor_ids):]),
                     num_neighbors=num_neighbors)
 
-                # 如果查找的邻居的数量超过了社区节点数量，计算余弦相似度，取前k个
                 if len(nodes_neighbor_ids) + len(nodes_neighbor_ids_list[0][i]) >= num_neighbors and hop >= 2:
                     if len(nodes_neighbor_ids_list) >= num_neighbors:
                         break
@@ -437,7 +437,6 @@ class NeighborSampler:
                             nodes_neighbor_ids_list[0][i] = nodes_neighbor_ids_list[0][i] + sample_neighbor
                     break
                 else:
-                    # 如果小于，就把当前hop的所有节点都加入社区
                     nodes_neighbor_ids_list[0][i] = nodes_neighbor_ids_list[0][i] + [item for sub in nodes_neighbor_ids
                                                                                      for item in sub]
                     nodes_edge_ids_list[0][i] = nodes_edge_ids_list[0][i] + [item for sub in nodes_edge_ids for item in
@@ -449,7 +448,6 @@ class NeighborSampler:
                 # print(hop)
                 if hop > 9:
                     break
-                #    保存上一hop的节点
                 last_hop_node_neighbor_ids = [item for sub in nodes_neighbor_ids for item in sub]
                 last_hop_edge_idx = [item for sub in nodes_edge_ids for item in sub]
                 last_hop_neighbor_times = [item for sub in nodes_neighbor_times for item in sub]
@@ -753,9 +751,9 @@ nb_key_type = nb.typeof((1, 1, 0.1))
 
 
 class tppr_finder:
-    def __init__(self, num_nodes, k,n, n_tppr, alpha_list, beta_list):
+    def __init__(self, num_nodes, k, n, n_tppr, alpha_list, beta_list):
         self.num_nodes = num_nodes
-        self.k = k
+        self.k = 30
         self.n = n
         self.n_tppr = n_tppr
         self.alpha_list = alpha_list
@@ -838,6 +836,7 @@ class tppr_finder:
             weight_list[position] = tmp_weights
 
     def streaming_topk(self, node_embeddings, community_score, all_community_member, community_embeddings, source_nodes, timestamps, edge_idxs):
+        # Topological sampling
         n_edges = len(source_nodes) // 2
         n_nodes = len(source_nodes)
         batch_node_list = []
@@ -877,11 +876,11 @@ class tppr_finder:
 
                 ############# ! then update the PPR values here #############
                 for index, pair in enumerate(pairs):
-                    s1 = pair[0]  # s1源节点 s2目标节点
+                    s1 = pair[0]
                     s2 = pair[1]
 
                     ################# s1 side #################
-                    if norm_list[s1] == 0:  # 如果没有 就创建
+                    if norm_list[s1] == 0:
                         t_s1_PPR = nb.typed.Dict.empty(
                             key_type=nb_key_type,
                             value_type=types.float64,
@@ -952,46 +951,40 @@ class tppr_finder:
                 else:
                     PPR_list[source] = new_s1_PPR
                     norm_list[source] = norm_list[source] * beta + beta
-        community_embeddings.zero_()
+
+        # sematic sampling
         num_community_neighbors = all_community_member.shape[1]
-        neighbor_embeddings = node_embeddings[torch.from_numpy(batch_node_list[0]).to(torch.int64)]
+        batch_tppr_neighbor = torch.from_numpy(batch_node_list[0]).to(torch.int64)
+        neighbor_embeddings = node_embeddings[batch_tppr_neighbor]
         center_embeddings = node_embeddings[source_nodes]
 
-        community_member = []
+        pi_sem = self.multi_head_attention(query=center_embeddings.unsqueeze(dim=1).permute(1, 0, 2), key=neighbor_embeddings.permute(1, 0, 2),
+                                                   value=neighbor_embeddings.permute(1, 0, 2))[1].squeeze(dim=1)
+        pi_top = torch.tensor(batch_weight_list[0]).to(pi_sem.device)
+        pi = pi_sem + pi_top
 
-        _, all_indices = self.multi_head_attention(query=center_embeddings.unsqueeze(dim=1).permute(1, 0, 2), key=neighbor_embeddings.permute(1, 0, 2),
-                                                   value=neighbor_embeddings.permute(1, 0, 2))
-        _, topk_indices = torch.topk(all_indices.squeeze(dim=1), num_community_neighbors, dim=-1)
+        topk_weights, topk_indices = torch.topk(pi, num_community_neighbors, dim=-1)
+        community_members = batch_tppr_neighbor[np.arange(topk_indices.shape[0])[:, np.newaxis], topk_indices]
 
-        all_indices = all_indices.squeeze(dim=1)
-        batch_node_list_0 = torch.tensor(batch_node_list[0])  # 转换为张量，方便索引
+        # Compute community embeddings
+        topk_weights = torch.softmax(topk_weights, dim=-1).unsqueeze(-1) #shape: [batch_size, k, 1]
+        expanded_indices = topk_indices.unsqueeze(-1).expand(-1, -1, neighbor_embeddings.shape[-1])  # shape: [batch_size, k, dim]
+        topk_neighbor_embeddings = torch.gather(neighbor_embeddings, dim=1, index=expanded_indices)  # shape: [batch_size, k, dim]
+        #  [batch_size, feat_dim]
+        community_center_embeddings = torch.sum(topk_neighbor_embeddings * topk_weights, dim=1)
 
-        community_member = [batch_node_list_0[i][topk_indices[i]].tolist() for i in range(center_embeddings.shape[0])]
-        weights = [all_indices[i][topk_indices[i]] for i in range(center_embeddings.shape[0])]
-        node_indices_tensor = torch.tensor(community_member, dtype=torch.long)
-        weights_tensor = torch.stack(weights,dim=0)
-        selected_node_embeddings = node_embeddings[node_indices_tensor]
-        weighted_embeddings = torch.bmm(weights_tensor.unsqueeze(1), selected_node_embeddings).squeeze(1)
-        community_embeddings[source_nodes] = weighted_embeddings
-
-        community_neighbor_embeddings = node_embeddings[torch.tensor(community_member)]
-        community_center_embeddings = node_embeddings[source_nodes]
-        fitness_score = self.le_conv(community_center_embeddings, community_neighbor_embeddings)
-
+        # select representative community from all community centers
+        fitness_score = self.le_conv(community_center_embeddings, neighbor_embeddings[topk_indices])# shape: [batch_size, 1]
         community_score[source_nodes] = fitness_score.detach().cpu()
-        all_community_member[source_nodes] = community_member
-
-        score = torch.softmax(torch.from_numpy(community_score), dim=0)
-        final_community_center = torch.topk(score.t(), self.n)[1].squeeze(dim=0)
+        all_community_member[source_nodes] = community_members
+        community_score = torch.softmax(torch.from_numpy(community_score), dim=0)
+        final_community_center = torch.topk(community_score.t(), self.n)[1].squeeze(dim=0)
         final_community_member = all_community_member[final_community_center.tolist()]
         final_community_embeddings = community_embeddings[final_community_center]
         batch_community_embeddings = community_embeddings[source_nodes]
+        community_embeddings[final_community_center] = community_embeddings[final_community_center]
+        return community_embeddings
 
-        for i in range(final_community_member.shape[1]):
-            member_indices = final_community_member[:, i]
-            community_embeddings[member_indices] = community_embeddings[final_community_center]
-
-        return final_community_center, final_community_member, final_community_embeddings, batch_community_embeddings, community_embeddings
 
     def compute_val_tppr(self, sources, targets, timestamps, edge_idxs):
 
@@ -1080,9 +1073,3 @@ class tppr_finder:
 
         self.val_norm_list = self.norm_list.copy()
         self.val_PPR_list = self.PPR_list.copy()
-
-# nodes_neighbor_ids_list, nodes_edge_ids_list, nodes_neighbor_times_list = \
-#     self.neighbor_sampler.get_community_historical_neighbors(self.src_node_ids, node_interact_times, 20)
-#
-# nodes_neighbor_ids_list, nodes_edge_ids_list, nodes_neighbor_times_list = \
-#     self.neighbor_sampler.get_community_historical_neighbors(self.dst_node_ids, node_interact_times, 20)
