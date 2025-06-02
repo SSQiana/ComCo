@@ -8,6 +8,7 @@ from torch.nn import MultiheadAttention
 
 from models.modules import TimeEncoder
 from utils.utils import NeighborSampler, tppr_finder
+from utils.community_detection import community_sampling
 
 class ComCo(nn.Module):
 
@@ -49,7 +50,7 @@ class ComCo(nn.Module):
         self.time_encoder = TimeEncoder(time_dim=time_feat_dim)
         self.neighbor_co_occurrence_feat_dim = self.channel_embedding_dim
         self.neighbor_co_occurrence_encoder = NeighborCooccurrenceEncoder(neighbor_co_occurrence_feat_dim=self.neighbor_co_occurrence_feat_dim, device=self.device)
-        self.num_channels = 4
+        self.num_channels = 3
         self.projection_layer = nn.ModuleDict({
             'node': nn.Linear(in_features=self.patch_size * self.node_feat_dim, out_features=self.channel_embedding_dim, bias=True),
             'edge': nn.Linear(in_features=self.patch_size * self.edge_feat_dim, out_features=self.channel_embedding_dim, bias=True),
@@ -83,12 +84,14 @@ class ComCo(nn.Module):
         self.n_tppr = len(self.alpha_list)
         self.community_member_number = top_n
         self.tppr_finder = tppr_finder(self.num_nodes, self.k,self.community_member_number, self.n_tppr, self.alpha_list, self.beta_list)
+
+        self.community_finder = community_sampling(self.num_nodes, self.k,self.community_member_number, self.n_tppr, self.alpha_list, self.beta_list)
+
         self.community_score = np.zeros((self.num_nodes, 1))
         self.community_member = np.zeros((self.num_nodes, self.k1))
         self.community_embeddings = torch.zeros(self.num_nodes, self.node_feat_dim).to(device)
         self.updated_node_embeddings = torch.from_numpy(node_raw_features.astype(np.float32)).to(device)
-        # self.updated_node_embeddings = torch.rand_like(torch.from_numpy(node_raw_features.astype(np.float32))).to(
-        #     device)
+
 
         self.all_node_ids = np.zeros(1, dtype=np.int64)
         self.drop = nn.Dropout(dropout)
@@ -209,12 +212,13 @@ class ComCo(nn.Module):
         src_patches_nodes_edge_raw_features = self.projection_layer['edge'](src_patches_nodes_edge_raw_features)
         src_patches_nodes_neighbor_time_features = self.projection_layer['time'](src_patches_nodes_neighbor_time_features)
         src_patches_nodes_neighbor_co_occurrence_features = self.projection_layer['neighbor_co_occurrence'](src_patches_nodes_neighbor_co_occurrence_features)
-
+        src_patches_nodes_neighbor_node_raw_features = src_patches_nodes_neighbor_node_raw_features + src_patches_nodes_neighbor_co_occurrence_features
         # Tensor, shape (batch_size, dst_num_patches, channel_embedding_dim)
         dst_patches_nodes_neighbor_node_raw_features = self.projection_layer['node'](dst_patches_nodes_neighbor_node_raw_features)
         dst_patches_nodes_edge_raw_features = self.projection_layer['edge'](dst_patches_nodes_edge_raw_features)
         dst_patches_nodes_neighbor_time_features = self.projection_layer['time'](dst_patches_nodes_neighbor_time_features)
         dst_patches_nodes_neighbor_co_occurrence_features = self.projection_layer['neighbor_co_occurrence'](dst_patches_nodes_neighbor_co_occurrence_features)
+        dst_patches_nodes_neighbor_node_raw_features = dst_patches_nodes_neighbor_node_raw_features + dst_patches_nodes_neighbor_co_occurrence_features
 
         batch_size = len(src_patches_nodes_neighbor_node_raw_features)
         src_num_patches = src_patches_nodes_neighbor_node_raw_features.shape[1]
@@ -224,10 +228,10 @@ class ComCo(nn.Module):
         patches_nodes_neighbor_node_raw_features = torch.cat([src_patches_nodes_neighbor_node_raw_features, dst_patches_nodes_neighbor_node_raw_features], dim=1)
         patches_nodes_edge_raw_features = torch.cat([src_patches_nodes_edge_raw_features, dst_patches_nodes_edge_raw_features], dim=1)
         patches_nodes_neighbor_time_features = torch.cat([src_patches_nodes_neighbor_time_features, dst_patches_nodes_neighbor_time_features], dim=1)
-        patches_nodes_neighbor_co_occurrence_features = torch.cat([src_patches_nodes_neighbor_co_occurrence_features, dst_patches_nodes_neighbor_co_occurrence_features], dim=1)
+        # patches_nodes_neighbor_co_occurrence_features = torch.cat([src_patches_nodes_neighbor_co_occurrence_features, dst_patches_nodes_neighbor_co_occurrence_features], dim=1)
 
         patches_data = [patches_nodes_neighbor_node_raw_features, patches_nodes_edge_raw_features,
-                        patches_nodes_neighbor_time_features, patches_nodes_neighbor_co_occurrence_features]
+                        patches_nodes_neighbor_time_features]
 
         # Tensor, shape (batch_size, src_num_patches + dst_num_patches, num_channels, channel_embedding_dim)
         patches_data = torch.stack(patches_data, dim=2)
@@ -235,7 +239,7 @@ class ComCo(nn.Module):
         patches_data = patches_data.reshape(batch_size, src_num_patches + dst_num_patches, self.num_channels * self.channel_embedding_dim)
         self.community_embeddings = self.updated_node_embeddings
 
-        temp_community_embeddings = self.tppr_finder.streaming_topk(self.updated_node_embeddings.data.clone(), self.community_score,
+        temp_community_embeddings = self.community_finder.community_detection(self.updated_node_embeddings.data.clone(), self.community_score,
                                             self.community_member, self.community_embeddings.data.clone(),
                                             np.hstack((src_node_ids, dst_node_ids)), node_interact_times, edge_ids)
 
@@ -277,40 +281,29 @@ class ComCo(nn.Module):
 
         return src_node_embeddings, dst_node_embeddings
 
-    # def update_node_temporal_embeddings(self, src_node_embeddings, dst_node_embeddings, src_node_ids, dst_node_ids):
-    #     updated_node_embeddings = self.updated_node_embeddings.clone()
-    #     ratio = self.ratio
-    #     num_samples = int(len(src_node_ids) * ratio)
-    #
-    #     src_indices = np.random.choice(len(src_node_ids), num_samples, replace=False)
-    #     dst_indices = np.random.choice(len(dst_node_ids), num_samples, replace=False)
-    #
-    #     for i in range(num_samples):
-    #         if i % 2 == 0:
-    #             src_index = src_indices[i]
-    #             src_emb = self.updated_node_embeddings[src_node_ids[src_index]].data
-    #             src_new = self.update_embeddings(src_node_embeddings[src_index], src_emb)
-    #             updated_node_embeddings[src_node_ids[src_index]] = src_new + self.drop(src_emb)
-    #             self.updated_node_embeddings[src_node_ids[src_index]] = src_new.data
-    #         else:
-    #             dst_index = dst_indices[i]
-    #             dst_emb = self.updated_node_embeddings[dst_node_ids[dst_index]].data
-    #             dst_new = self.update_embeddings(dst_node_embeddings[dst_index], dst_emb)
-    #             updated_node_embeddings[dst_node_ids[dst_index]] = dst_new + self.drop(dst_emb)
-    #             self.updated_node_embeddings[dst_node_ids[dst_index]] = dst_new.data
-
-
     def update_node_temporal_embeddings(self, src_node_embeddings, dst_node_embeddings, src_node_ids, dst_node_ids):
         updated_node_embeddings = self.updated_node_embeddings.clone()
-        src_emb = self.updated_node_embeddings[src_node_ids].data
-        src_new = self.update_embeddings(src_node_embeddings, src_emb)
-        updated_node_embeddings[src_node_ids] = src_new + self.drop(src_emb)
-        self.updated_node_embeddings[src_node_ids] = src_new.data
+        ratio = self.ratio
+        num_samples = int(len(src_node_ids) * ratio)
+    
+        src_indices = np.random.choice(len(src_node_ids), num_samples, replace=False)
+        dst_indices = np.random.choice(len(dst_node_ids), num_samples, replace=False)
+    
+        for i in range(num_samples):
+            if i % 2 == 0:
+                src_index = src_indices[i]
+                src_emb = self.updated_node_embeddings[src_node_ids[src_index]].data
+                src_new = self.update_embeddings(src_node_embeddings[src_index], src_emb)
+                updated_node_embeddings[src_node_ids[src_index]] = src_new + self.drop(src_emb)
+                self.updated_node_embeddings[src_node_ids[src_index]] = src_new.data
+            else:
+                dst_index = dst_indices[i]
+                dst_emb = self.updated_node_embeddings[dst_node_ids[dst_index]].data
+                dst_new = self.update_embeddings(dst_node_embeddings[dst_index], dst_emb)
+                updated_node_embeddings[dst_node_ids[dst_index]] = dst_new + self.drop(dst_emb)
+                self.updated_node_embeddings[dst_node_ids[dst_index]] = dst_new.data
 
-        dst_emb = self.updated_node_embeddings[dst_node_ids].data
-        dst_new = self.update_embeddings(dst_node_embeddings, dst_emb)
-        updated_node_embeddings[dst_node_ids] = dst_new + self.drop(dst_emb)
-        self.updated_node_embeddings[dst_node_ids] = dst_new.data
+
 
 
     def generate_graph_embeddings(self, patches_data, sequence_length, comp_pos_neg):
