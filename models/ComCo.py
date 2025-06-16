@@ -91,8 +91,6 @@ class ComCo(nn.Module):
         self.community_member = np.zeros((self.num_nodes, self.k1))
         self.community_embeddings = torch.zeros(self.num_nodes, self.node_feat_dim).to(device)
         self.updated_node_embeddings = torch.from_numpy(node_raw_features.astype(np.float32)).to(device)
-
-
         self.all_node_ids = np.zeros(1, dtype=np.int64)
         self.drop = nn.Dropout(dropout)
 
@@ -304,6 +302,17 @@ class ComCo(nn.Module):
                 self.updated_node_embeddings[dst_node_ids[dst_index]] = dst_new.data
 
 
+    # def update_node_temporal_embeddings(self, src_node_embeddings, dst_node_embeddings, src_node_ids, dst_node_ids):
+    #     updated_node_embeddings = self.updated_node_embeddings.clone()
+    #     src_emb = self.updated_node_embeddings[src_node_ids].data
+    #     src_new = self.update_embeddings(src_node_embeddings, src_emb)
+    #     updated_node_embeddings[src_node_ids] = src_new + self.drop(src_emb)
+    #     self.updated_node_embeddings[src_node_ids] = src_new.data
+
+    #     dst_emb = self.updated_node_embeddings[dst_node_ids].data
+    #     dst_new = self.update_embeddings(dst_node_embeddings, dst_emb)
+    #     updated_node_embeddings[dst_node_ids] = dst_new + self.drop(dst_emb)
+    #     self.updated_node_embeddings[dst_node_ids] = dst_new.data
 
 
     def generate_graph_embeddings(self, patches_data, sequence_length, comp_pos_neg):
