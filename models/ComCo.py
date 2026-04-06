@@ -12,7 +12,7 @@ from utils.community_detection import community_sampling
 
 class ComCo(nn.Module):
 
-    def __init__(self, top_k,top_n, alpha, beta, ratio, train_node_ids, node_raw_features: np.ndarray, edge_raw_features: np.ndarray, neighbor_sampler: NeighborSampler,
+    def __init__(self, top_k, top_n, alpha, beta, ratio, train_node_ids, node_raw_features: np.ndarray, edge_raw_features: np.ndarray, neighbor_sampler: NeighborSampler,
                  time_feat_dim: int, channel_embedding_dim: int, patch_size: int = 1, num_layers: int = 2, num_heads: int = 2,
                  dropout: float = 0.1, max_input_sequence_length: int = 512, batch_size: int = 200, device: str = 'cpu'):
         """
@@ -55,7 +55,7 @@ class ComCo(nn.Module):
             'node': nn.Linear(in_features=self.patch_size * self.node_feat_dim, out_features=self.channel_embedding_dim, bias=True),
             'edge': nn.Linear(in_features=self.patch_size * self.edge_feat_dim, out_features=self.channel_embedding_dim, bias=True),
             'time': nn.Linear(in_features=self.patch_size * self.time_feat_dim, out_features=self.channel_embedding_dim, bias=True),
-            'neighbor_co_occurrence': nn.Linear(in_features=self.patch_size * self.neighbor_co_occurrence_feat_dim, out_features=self.channel_embedding_dim, bias=True),
+            # 'neighbor_co_occurrence': nn.Linear(in_features=self.patch_size * self.neighbor_co_occurrence_feat_dim, out_features=self.channel_embedding_dim, bias=True),
             'mesco': nn.Linear(in_features=self.node_feat_dim, out_features=self.num_channels * self.channel_embedding_dim, bias=True),
             'graph': nn.Linear(in_features=self.node_feat_dim, out_features=self.num_channels * self.channel_embedding_dim, bias=True)
         })
@@ -74,7 +74,8 @@ class ComCo(nn.Module):
         self.output_layer = nn.Linear(in_features=3*self.num_channels * self.channel_embedding_dim, out_features=self.node_feat_dim, bias=True)
 
         self.num_nodes = self.node_raw_features.shape[0]
-
+        # top_k = 3
+        # top_n = 2
         self.k = top_k
         self.k1 = top_k
         self.ratio = ratio
@@ -85,7 +86,7 @@ class ComCo(nn.Module):
         self.community_member_number = top_n
         self.tppr_finder = tppr_finder(self.num_nodes, self.k,self.community_member_number, self.n_tppr, self.alpha_list, self.beta_list)
 
-        self.community_finder = community_sampling(self.num_nodes, self.k,self.community_member_number, self.n_tppr, self.alpha_list, self.beta_list)
+        self.community_finder = community_sampling(self.num_nodes, self.k, self.community_member_number, self.n_tppr, self.alpha_list, self.beta_list)
 
         self.community_score = np.zeros((self.num_nodes, 1))
         self.community_member = np.zeros((self.num_nodes, self.k1))
@@ -124,7 +125,7 @@ class ComCo(nn.Module):
         else:
             self.tppr_finder.compute_val_tppr(sources, targets, timestamps, edge_idxs)
 
-    def compute_src_dst_node_temporal_embeddings(self, edge_ids, src_node_ids: np.ndarray, dst_node_ids: np.ndarray, node_interact_times: np.ndarray, comp_pos_neg: str):
+    def compute_src_dst_node_temporal_embeddings(self, edge_ids, batch_idx, src_node_ids: np.ndarray, dst_node_ids: np.ndarray, node_interact_times: np.ndarray, edges_are_positive: str):
         """
         compute source and destination node temporal embeddings
         :param src_node_ids: ndarray, shape (batch_size, )
@@ -162,9 +163,9 @@ class ComCo(nn.Module):
 
         # src_padded_nodes_neighbor_co_occurrence_features, Tensor, shape (batch_size, src_max_seq_length, neighbor_co_occurrence_feat_dim)
         # dst_padded_nodes_neighbor_co_occurrence_features, Tensor, shape (batch_size, dst_max_seq_length, neighbor_co_occurrence_feat_dim)
-        src_padded_nodes_neighbor_co_occurrence_features, dst_padded_nodes_neighbor_co_occurrence_features = \
-            self.neighbor_co_occurrence_encoder(src_padded_nodes_neighbor_ids=src_padded_nodes_neighbor_ids,
-                                                dst_padded_nodes_neighbor_ids=dst_padded_nodes_neighbor_ids)
+        # src_padded_nodes_neighbor_co_occurrence_features, dst_padded_nodes_neighbor_co_occurrence_features = \
+        #     self.neighbor_co_occurrence_encoder(src_padded_nodes_neighbor_ids=src_padded_nodes_neighbor_ids,
+        #                                         dst_padded_nodes_neighbor_ids=dst_padded_nodes_neighbor_ids)
 
         # get the features of the sequence of source and destination nodes
         # src_padded_nodes_neighbor_node_raw_features, Tensor, shape (batch_size, src_max_seq_length, node_feat_dim)
@@ -186,22 +187,22 @@ class ComCo(nn.Module):
         # src_patches_nodes_edge_raw_features, Tensor, shape (batch_size, src_num_patches, patch_size * edge_feat_dim)
         # src_patches_nodes_neighbor_time_features, Tensor, shape (batch_size, src_num_patches, patch_size * time_feat_dim)
         src_patches_nodes_neighbor_node_raw_features, src_patches_nodes_edge_raw_features, \
-        src_patches_nodes_neighbor_time_features, src_patches_nodes_neighbor_co_occurrence_features = \
+        src_patches_nodes_neighbor_time_features = \
             self.get_patches(padded_nodes_neighbor_node_raw_features=src_padded_nodes_neighbor_node_raw_features,
                              padded_nodes_edge_raw_features=src_padded_nodes_edge_raw_features,
                              padded_nodes_neighbor_time_features=src_padded_nodes_neighbor_time_features,
-                             padded_nodes_neighbor_co_occurrence_features=src_padded_nodes_neighbor_co_occurrence_features,
+                             # padded_nodes_neighbor_co_occurrence_features=src_padded_nodes_neighbor_co_occurrence_features,
                              patch_size=self.patch_size)
 
         # dst_patches_nodes_neighbor_node_raw_features, Tensor, shape (batch_size, dst_num_patches, patch_size * node_feat_dim)
         # dst_patches_nodes_edge_raw_features, Tensor, shape (batch_size, dst_num_patches, patch_size * edge_feat_dim)
         # dst_patches_nodes_neighbor_time_features, Tensor, shape (batch_size, dst_num_patches, patch_size * time_feat_dim)
         dst_patches_nodes_neighbor_node_raw_features, dst_patches_nodes_edge_raw_features, \
-        dst_patches_nodes_neighbor_time_features, dst_patches_nodes_neighbor_co_occurrence_features = \
+        dst_patches_nodes_neighbor_time_features = \
             self.get_patches(padded_nodes_neighbor_node_raw_features=dst_padded_nodes_neighbor_node_raw_features,
                              padded_nodes_edge_raw_features=dst_padded_nodes_edge_raw_features,
                              padded_nodes_neighbor_time_features=dst_padded_nodes_neighbor_time_features,
-                             padded_nodes_neighbor_co_occurrence_features=dst_padded_nodes_neighbor_co_occurrence_features,
+                             # padded_nodes_neighbor_co_occurrence_features=dst_padded_nodes_neighbor_co_occurrence_features,
                              patch_size=self.patch_size)
 
         # align the patch encoding dimension
@@ -209,14 +210,14 @@ class ComCo(nn.Module):
         src_patches_nodes_neighbor_node_raw_features = self.projection_layer['node'](src_patches_nodes_neighbor_node_raw_features)
         src_patches_nodes_edge_raw_features = self.projection_layer['edge'](src_patches_nodes_edge_raw_features)
         src_patches_nodes_neighbor_time_features = self.projection_layer['time'](src_patches_nodes_neighbor_time_features)
-        src_patches_nodes_neighbor_co_occurrence_features = self.projection_layer['neighbor_co_occurrence'](src_patches_nodes_neighbor_co_occurrence_features)
-        src_patches_nodes_neighbor_node_raw_features = src_patches_nodes_neighbor_node_raw_features + src_patches_nodes_neighbor_co_occurrence_features
+        # src_patches_nodes_neighbor_co_occurrence_features = self.projection_layer['neighbor_co_occurrence'](src_patches_nodes_neighbor_co_occurrence_features)
+        # src_patches_nodes_neighbor_node_raw_features = src_patches_nodes_neighbor_node_raw_features + src_patches_nodes_neighbor_co_occurrence_features
         # Tensor, shape (batch_size, dst_num_patches, channel_embedding_dim)
         dst_patches_nodes_neighbor_node_raw_features = self.projection_layer['node'](dst_patches_nodes_neighbor_node_raw_features)
         dst_patches_nodes_edge_raw_features = self.projection_layer['edge'](dst_patches_nodes_edge_raw_features)
         dst_patches_nodes_neighbor_time_features = self.projection_layer['time'](dst_patches_nodes_neighbor_time_features)
-        dst_patches_nodes_neighbor_co_occurrence_features = self.projection_layer['neighbor_co_occurrence'](dst_patches_nodes_neighbor_co_occurrence_features)
-        dst_patches_nodes_neighbor_node_raw_features = dst_patches_nodes_neighbor_node_raw_features + dst_patches_nodes_neighbor_co_occurrence_features
+        # dst_patches_nodes_neighbor_co_occurrence_features = self.projection_layer['neighbor_co_occurrence'](dst_patches_nodes_neighbor_co_occurrence_features)
+        # dst_patches_nodes_neighbor_node_raw_features = dst_patches_nodes_neighbor_node_raw_features + dst_patches_nodes_neighbor_co_occurrence_features
 
         batch_size = len(src_patches_nodes_neighbor_node_raw_features)
         src_num_patches = src_patches_nodes_neighbor_node_raw_features.shape[1]
@@ -239,7 +240,7 @@ class ComCo(nn.Module):
 
         temp_community_embeddings = self.community_finder.community_detection(self.updated_node_embeddings.data.clone(), self.community_score,
                                             self.community_member, self.community_embeddings.data.clone(),
-                                            np.hstack((src_node_ids, dst_node_ids)), node_interact_times, edge_ids)
+                                            np.hstack((src_node_ids, dst_node_ids)), node_interact_times, edge_ids, batch_idx)
 
         self.community_embeddings = temp_community_embeddings
 
@@ -250,7 +251,7 @@ class ComCo(nn.Module):
 
         sequence_length = patches_data.shape[1]
         patches_community_data = torch.concat((self.updated_node_embeddings[torch.from_numpy(src_padded_nodes_neighbor_ids)], self.updated_node_embeddings[torch.from_numpy(dst_padded_nodes_neighbor_ids)] ),dim=1)
-        graph_embeddings = self.generate_graph_embeddings(patches_community_data, sequence_length, comp_pos_neg)
+        graph_embeddings = self.generate_graph_embeddings(patches_community_data, sequence_length, edges_are_positive)
         graph_embeddings = graph_embeddings[:, :sequence_length, :]
 
         patches_mesco_emb = self.projection_layer['mesco'](mesco_emb)
@@ -274,12 +275,35 @@ class ComCo(nn.Module):
         # Tensor, shape (batch_size, node_feat_dim)
         dst_node_embeddings = self.output_layer(dst_patches_data)
 
-        if comp_pos_neg == 'pos':
+        if edges_are_positive == 'pos':
             self.update_node_temporal_embeddings(src_node_embeddings, dst_node_embeddings, src_node_ids, dst_node_ids)
 
         return src_node_embeddings, dst_node_embeddings
 
-    def update_node_temporal_embeddings(self, src_node_embeddings, dst_node_embeddings, src_node_ids, dst_node_ids):
+    # def update_node_temporal_embeddings(self, src_node_embeddings, dst_node_embeddings, src_node_ids, dst_node_ids):
+    #     updated_node_embeddings = self.updated_node_embeddings.clone()
+    #     ratio = self.ratio
+    #     num_samples = int(len(src_node_ids) * ratio)
+    #
+    #     src_indices = np.random.choice(len(src_node_ids), num_samples, replace=False)
+    #     dst_indices = np.random.choice(len(dst_node_ids), num_samples, replace=False)
+    #
+    #     for i in range(num_samples):
+    #         if i % 2 == 0:
+    #             src_index = src_indices[i]
+    #             src_emb = self.updated_node_embeddings[src_node_ids[src_index]].data
+    #             src_new = self.update_embeddings(src_node_embeddings[src_index], src_emb)
+    #             updated_node_embeddings[src_node_ids[src_index]] = src_new + self.drop(src_emb)
+    #             self.updated_node_embeddings[src_node_ids[src_index]] = src_new.data
+    #         else:
+    #             dst_index = dst_indices[i]
+    #             dst_emb = self.updated_node_embeddings[dst_node_ids[dst_index]].data
+    #             dst_new = self.update_embeddings(dst_node_embeddings[dst_index], dst_emb)
+    #             updated_node_embeddings[dst_node_ids[dst_index]] = dst_new + self.drop(dst_emb)
+    #             self.updated_node_embeddings[dst_node_ids[dst_index]] = dst_new.data
+
+
+  def update_node_temporal_embeddings(self, src_node_embeddings, dst_node_embeddings, src_node_ids, dst_node_ids):
         updated_node_embeddings = self.updated_node_embeddings.clone()
         ratio = self.ratio
         num_samples = int(len(src_node_ids) * ratio)
@@ -302,22 +326,9 @@ class ComCo(nn.Module):
                 self.updated_node_embeddings[dst_node_ids[dst_index]] = dst_new.data
 
 
-    # def update_node_temporal_embeddings(self, src_node_embeddings, dst_node_embeddings, src_node_ids, dst_node_ids):
-    #     updated_node_embeddings = self.updated_node_embeddings.clone()
-    #     src_emb = self.updated_node_embeddings[src_node_ids].data
-    #     src_new = self.update_embeddings(src_node_embeddings, src_emb)
-    #     updated_node_embeddings[src_node_ids] = src_new + self.drop(src_emb)
-    #     self.updated_node_embeddings[src_node_ids] = src_new.data
-
-    #     dst_emb = self.updated_node_embeddings[dst_node_ids].data
-    #     dst_new = self.update_embeddings(dst_node_embeddings, dst_emb)
-    #     updated_node_embeddings[dst_node_ids] = dst_new + self.drop(dst_emb)
-    #     self.updated_node_embeddings[dst_node_ids] = dst_new.data
-
-
-    def generate_graph_embeddings(self, patches_data, sequence_length, comp_pos_neg):
+    def generate_graph_embeddings(self, patches_data, sequence_length, edges_are_positive):
         patch_size = patches_data.shape[0]
-        if comp_pos_neg == 'pos:':
+        if edges_are_positive == 'pos:':
             self.last_pos_batch_embeddings[:(2 * self.batch_size - patch_size)] = self.last_pos_batch_embeddings[
                                                                                   patch_size:].data.data.clone()
             self.last_pos_batch_embeddings[2 * self.batch_size - patch_size:, :sequence_length, :] = patches_data
@@ -327,7 +338,7 @@ class ComCo(nn.Module):
             self.last_neg_batch_embeddings[2 * self.batch_size - patch_size:, :sequence_length, :] = patches_data.data.clone()
         graph_embeddings = []
         for i in range(patch_size, 2 * patch_size):
-            if comp_pos_neg == 'pos:':
+            if edges_are_positive == 'pos:':
                 temp = self.last_pos_batch_embeddings[
                        2 * self.batch_size - patch_size - self.batch_size + i: 2 * self.batch_size - patch_size + i].data.clone()
             else:
@@ -414,7 +425,7 @@ class ComCo(nn.Module):
         return padded_nodes_neighbor_node_raw_features, padded_nodes_edge_raw_features, padded_nodes_neighbor_time_features
 
     def get_patches(self, padded_nodes_neighbor_node_raw_features: torch.Tensor, padded_nodes_edge_raw_features: torch.Tensor,
-                    padded_nodes_neighbor_time_features: torch.Tensor, padded_nodes_neighbor_co_occurrence_features, patch_size: int = 1):
+                    padded_nodes_neighbor_time_features: torch.Tensor, patch_size: int = 1):
         """
         get the sequence of patches for nodes
         :param padded_nodes_neighbor_node_raw_features: Tensor, shape (batch_size, max_seq_length, node_feat_dim)
@@ -437,7 +448,7 @@ class ComCo(nn.Module):
             patches_nodes_neighbor_node_raw_features.append(padded_nodes_neighbor_node_raw_features[:, start_idx: end_idx, :])
             patches_nodes_edge_raw_features.append(padded_nodes_edge_raw_features[:, start_idx: end_idx, :])
             patches_nodes_neighbor_time_features.append(padded_nodes_neighbor_time_features[:, start_idx: end_idx, :])
-            patches_nodes_neighbor_co_occurrence_features.append(padded_nodes_neighbor_co_occurrence_features[:, start_idx: end_idx, :])
+            # patches_nodes_neighbor_co_occurrence_features.append(padded_nodes_neighbor_co_occurrence_features[:, start_idx: end_idx, :])
 
         batch_size = len(padded_nodes_neighbor_node_raw_features)
         # Tensor, shape (batch_size, num_patches, patch_size * node_feat_dim)
@@ -447,9 +458,9 @@ class ComCo(nn.Module):
         # Tensor, shape (batch_size, num_patches, patch_size * time_feat_dim)
         patches_nodes_neighbor_time_features = torch.stack(patches_nodes_neighbor_time_features, dim=1).reshape(batch_size, num_patches, patch_size * self.time_feat_dim)
 
-        patches_nodes_neighbor_co_occurrence_features = torch.stack(patches_nodes_neighbor_co_occurrence_features, dim=1).reshape(batch_size, num_patches, patch_size * self.neighbor_co_occurrence_feat_dim)
+        # patches_nodes_neighbor_co_occurrence_features = torch.stack(patches_nodes_neighbor_co_occurrence_features, dim=1).reshape(batch_size, num_patches, patch_size * self.neighbor_co_occurrence_feat_dim)
 
-        return patches_nodes_neighbor_node_raw_features, patches_nodes_edge_raw_features, patches_nodes_neighbor_time_features, patches_nodes_neighbor_co_occurrence_features
+        return patches_nodes_neighbor_node_raw_features, patches_nodes_edge_raw_features, patches_nodes_neighbor_time_features
 
     def set_neighbor_sampler(self, neighbor_sampler: NeighborSampler):
         """
