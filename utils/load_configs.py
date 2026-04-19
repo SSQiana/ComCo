@@ -12,11 +12,11 @@ def get_link_prediction_args(is_evaluation: bool = False):
     # arguments
     # wikipedia uci enron
     parser = argparse.ArgumentParser('Interface for the link prediction task')
-    parser.add_argument('--dataset_name', type=str, help='dataset to be used', default='uci',
+    parser.add_argument('--dataset_name', type=str, help='dataset to be used', default='wikipedia',
                         choices=['wikipedia', 'reddit', 'mooc', 'lastfm', 'myket', 'enron', 'SocialEvo', 'uci', 'Flights', 'CanParl', 'USLegis', 'UNtrade', 'UNvote', 'Contacts'])
     parser.add_argument('--batch_size', type=int, default=200, help='batch size')
-    parser.add_argument('--model_name', type=str, default='DyGFormer', help='name of the model, note that EdgeBank is only applicable for evaluation',
-                        choices=['JODIE', 'DyRep', 'TGAT', 'TGN', 'CAWN', 'EdgeBank', 'TCL', 'GraphMixer', 'DyGFormer'])
+    parser.add_argument('--model_name', type=str, default='ComCo', help='name of the model, note that EdgeBank is only applicable for evaluation',
+                        choices=['JODIE', 'DyRep', 'TGAT', 'TGN', 'CAWN', 'EdgeBank', 'TCL', 'GraphMixer', 'DyGFormer', 'ComCo'])
     parser.add_argument('--gpu', type=int, default=0, help='number of gpu to use')
     parser.add_argument('--num_neighbors', type=int, default=20, help='number of neighbors to sample for each node')
     parser.add_argument('--sample_neighbor_strategy', type=str, default='recent', choices=['uniform', 'recent', 'time_interval_aware'], help='how to sample historical neighbors')
@@ -37,29 +37,30 @@ def get_link_prediction_args(is_evaluation: bool = False):
     parser.add_argument('--patch_size', type=int, default=1, help='patch size')
     parser.add_argument('--channel_embedding_dim', type=int, default=50, help='dimension of each channel embedding')
     parser.add_argument('--max_input_sequence_length', type=int, default=32, help='maximal length of the input sequence of each node')
-    parser.add_argument('--learning_rate', type=float, default=0.00001, help='learning rate')
+    parser.add_argument('--learning_rate', type=float, default=0.0001, help='learning rate')
     parser.add_argument('--dropout', type=float, default=0.1, help='dropout rate')
-    parser.add_argument('--num_epochs', type=int, default=1, help='number of epochs')
+    parser.add_argument('--num_epochs', type=int, default=50, help='number of epochs')
     parser.add_argument('--optimizer', type=str, default='Adam', choices=['SGD', 'Adam', 'RMSprop'], help='name of optimizer')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='weight decay')
     parser.add_argument('--patience', type=int, default=20, help='patience for early stopping')
     parser.add_argument('--val_ratio', type=float, default=0.15, help='ratio of validation set')
     parser.add_argument('--test_ratio', type=float, default=0.15, help='ratio of test set')
-    parser.add_argument('--num_runs', type=int, default=45, help='number of runs')
+    parser.add_argument('--num_runs', type=int, default=1, help='number of runs')
     parser.add_argument('--test_interval_epochs', type=int, default=10, help='how many epochs to perform testing once')
     parser.add_argument('--negative_sample_strategy', type=str, default='historical', choices=['random', 'historical', 'inductive'],
                         help='strategy for the negative edge sampling')
     parser.add_argument('--load_best_configs', action='store_true', default=True, help='whether to load the best configurations')
 
-    parser.add_argument('--top_k', type=int, default=15, help='number of community member')
+    parser.add_argument('--top_k', type=int, default=20, help='number of community member')
     parser.add_argument('--top_n', type=int, default=80, help='number of community')
 
     parser.add_argument('--alpha', type=int, default=0.5, help='probability of a random walk')
     parser.add_argument('--beta', type=int, default=0.8, help='exponential decay factor')
-    parser.add_argument('--ratio', type=int, default=0.5, help='exponential decay factor')
+    parser.add_argument('--ratio', type=int, default=0.5)
     try:
         args = parser.parse_args()
         args.device = f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu'
+        # args.device = 'cpu'
     except:
         parser.print_help()
         sys.exit()
@@ -80,6 +81,32 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
     :return:
     """
     # model specific settings
+    if args.model_name == 'ComCo':
+        if args.dataset_name in ['uci']:
+            args.learning_rate = 0.0001
+            args.ratio = 0.001
+            args.patience = 5
+        if args.dataset_name in ['wikipedia']:
+            args.learning_rate = 0.00005
+            args.ratio = 0.01
+            args.patience = 5
+        if args.dataset_name in ['enron']:
+            args.learning_rate = 0.00005
+            args.ratio = 0.0001
+            args.patience = 10
+        if args.dataset_name in ['mooc']:
+            args.learning_rate = 0.0001
+            args.ratio = 0.0
+            args.patience = 5
+        if args.dataset_name in ['reddit']:
+            args.learning_rate = 0.0001
+            args.ratio = 0.000
+            args.patience = 10
+        if args.dataset_name in ['SocialEvo']:
+            args.learning_rate = 0.0001
+            args.ratio = 1.0
+            args.patience = 5
+
     if args.model_name == 'TGAT':
         args.num_neighbors = 20
         args.num_layers = 2
@@ -91,6 +118,11 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
             args.sample_neighbor_strategy = 'uniform'
         else:
             args.sample_neighbor_strategy = 'recent'
+    elif args.model_name == 'ComCo':
+        if args.dataset_name in ['uci']:
+            args.ratio = 0.01
+            args.learning_rate = 0.0001
+
     elif args.model_name in ['JODIE', 'DyRep', 'TGN']:
         args.num_neighbors = 10
         args.num_layers = 1
