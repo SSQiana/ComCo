@@ -280,40 +280,40 @@ class ComCo(nn.Module):
 
         return src_node_embeddings, dst_node_embeddings
 
-    # def update_node_temporal_embeddings(self, src_node_embeddings, dst_node_embeddings, src_node_ids, dst_node_ids):
-    #     updated_node_embeddings = self.updated_node_embeddings.clone()
-    #     ratio = self.ratio
-    #     num_samples = int(len(src_node_ids) * ratio)
-    #
-    #     src_indices = np.random.choice(len(src_node_ids), num_samples, replace=False)
-    #     dst_indices = np.random.choice(len(dst_node_ids), num_samples, replace=False)
-    #
-    #     for i in range(num_samples):
-    #         if i % 2 == 0:
-    #             src_index = src_indices[i]
-    #             src_emb = self.updated_node_embeddings[src_node_ids[src_index]].data
-    #             src_new = self.update_embeddings(src_node_embeddings[src_index], src_emb)
-    #             updated_node_embeddings[src_node_ids[src_index]] = src_new + self.drop(src_emb)
-    #             self.updated_node_embeddings[src_node_ids[src_index]] = src_new.data
-    #         else:
-    #             dst_index = dst_indices[i]
-    #             dst_emb = self.updated_node_embeddings[dst_node_ids[dst_index]].data
-    #             dst_new = self.update_embeddings(dst_node_embeddings[dst_index], dst_emb)
-    #             updated_node_embeddings[dst_node_ids[dst_index]] = dst_new + self.drop(dst_emb)
-    #             self.updated_node_embeddings[dst_node_ids[dst_index]] = dst_new.data
-
-
     def update_node_temporal_embeddings(self, src_node_embeddings, dst_node_embeddings, src_node_ids, dst_node_ids):
         updated_node_embeddings = self.updated_node_embeddings.clone()
-        src_emb = self.updated_node_embeddings[src_node_ids].data
-        src_new = self.update_embeddings(src_node_embeddings, src_emb)
-        updated_node_embeddings[src_node_ids] = src_new + self.drop(src_emb)
-        self.updated_node_embeddings[src_node_ids] = src_new.data
+        ratio = self.ratio
+        num_samples = int(len(src_node_ids) * ratio)
 
-        dst_emb = self.updated_node_embeddings[dst_node_ids].data
-        dst_new = self.update_embeddings(dst_node_embeddings, dst_emb)
-        updated_node_embeddings[dst_node_ids] = dst_new + self.drop(dst_emb)
-        self.updated_node_embeddings[dst_node_ids] = dst_new.data
+        src_indices = np.random.choice(len(src_node_ids), num_samples, replace=False)
+        dst_indices = np.random.choice(len(dst_node_ids), num_samples, replace=False)
+
+        for i in range(num_samples):
+            if i % 2 == 0:
+                src_index = src_indices[i]
+                src_emb = self.updated_node_embeddings[src_node_ids[src_index]].data
+                src_new = self.update_embeddings(src_node_embeddings[src_index], src_emb)
+                updated_node_embeddings[src_node_ids[src_index]] = src_new + self.drop(src_emb)
+                self.updated_node_embeddings[src_node_ids[src_index]] = src_new.data
+            else:
+                dst_index = dst_indices[i]
+                dst_emb = self.updated_node_embeddings[dst_node_ids[dst_index]].data
+                dst_new = self.update_embeddings(dst_node_embeddings[dst_index], dst_emb)
+                updated_node_embeddings[dst_node_ids[dst_index]] = dst_new + self.drop(dst_emb)
+                self.updated_node_embeddings[dst_node_ids[dst_index]] = dst_new.data
+
+
+    # def update_node_temporal_embeddings(self, src_node_embeddings, dst_node_embeddings, src_node_ids, dst_node_ids):
+    #     updated_node_embeddings = self.updated_node_embeddings.clone()
+    #     src_emb = self.updated_node_embeddings[src_node_ids].data
+    #     src_new = self.update_embeddings(src_node_embeddings, src_emb)
+    #     updated_node_embeddings[src_node_ids] = src_new + self.drop(src_emb)
+    #     self.updated_node_embeddings[src_node_ids] = src_new.data
+    #
+    #     dst_emb = self.updated_node_embeddings[dst_node_ids].data
+    #     dst_new = self.update_embeddings(dst_node_embeddings, dst_emb)
+    #     updated_node_embeddings[dst_node_ids] = dst_new + self.drop(dst_emb)
+    #     self.updated_node_embeddings[dst_node_ids] = dst_new.data
 
 
     def generate_graph_embeddings(self, patches_data, sequence_length, edges_are_positive):
