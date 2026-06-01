@@ -16,7 +16,7 @@ from utils.utils import NegativeEdgeSampler, NeighborSampler
 from utils.DataLoader import Data
 
 
-def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_sampler: NeighborSampler, evaluate_idx_data_loader: DataLoader,
+def evaluate_model_link_prediction(model_name: str, dataset_name, model: nn.Module, neighbor_sampler: NeighborSampler, evaluate_idx_data_loader: DataLoader,
                                    evaluate_neg_edge_sampler: NegativeEdgeSampler, evaluate_data: Data, loss_func: nn.Module,
                                    num_neighbors: int = 20, time_gap: int = 2000):
     """
@@ -36,7 +36,7 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
     assert evaluate_neg_edge_sampler.seed is not None
     evaluate_neg_edge_sampler.reset_random_state()
 
-    if model_name in ['DyRep', 'TGAT', 'TGN', 'CAWN', 'TCL', 'GraphMixer', 'DyGFormer']:
+    if model_name in ['DyRep', 'TGAT', 'TGN', 'CAWN', 'TCL', 'GraphMixer', 'DyGFormer', 'ComCo']:
         # evaluation phase use all the graph information
         model[0].set_neighbor_sampler(neighbor_sampler)
 
@@ -68,18 +68,23 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
 
             # get temporal embedding of source and destination nodes
             # two Tensors, with shape (batch_size, node_feat_dim)
-
+            # batch_neg_src_node_embeddings, batch_neg_dst_node_embeddings = model[
+            #     0].compute_src_dst_node_temporal_embeddings(batch_edge_ids, (batch_idx, args.dataset_name),
+            #                                                 src_node_ids=batch_neg_src_node_ids,
+            #                                                 dst_node_ids=batch_neg_dst_node_ids,
+            #                                                 node_interact_times=batch_node_interact_times,
+            #                                                 edges_are_positive='neg')
             batch_src_node_embeddings, batch_dst_node_embeddings = model[0].compute_src_dst_node_temporal_embeddings(
-                                                        batch_edge_ids, src_node_ids=batch_src_node_ids,
+                                                        batch_edge_ids, (batch_idx, dataset_name), src_node_ids=batch_src_node_ids,
                                                         dst_node_ids=batch_dst_node_ids,
-                                                        node_interact_times=batch_node_interact_times, comp_pos_neg='pos')
+                                                        node_interact_times=batch_node_interact_times, edges_are_positive='pos')
 
             # get temporal embedding of negative source and negative destination nodes
             # two Tensors, with shape (batch_size, node_feat_dim)
-            batch_neg_src_node_embeddings, batch_neg_dst_node_embeddings = model[0].compute_src_dst_node_temporal_embeddings(batch_edge_ids, src_node_ids=batch_neg_src_node_ids,
+            batch_neg_src_node_embeddings, batch_neg_dst_node_embeddings = model[0].compute_src_dst_node_temporal_embeddings(batch_edge_ids, (batch_idx, dataset_name), src_node_ids=batch_neg_src_node_ids,
                                                             dst_node_ids=batch_neg_dst_node_ids,
                                                             node_interact_times=batch_node_interact_times,
-                                                            comp_pos_neg='neg')
+                                                            edges_are_positive='neg')
 
 
             # get positive and negative probabilities, shape (batch_size, )
@@ -114,7 +119,7 @@ def evaluate_model_node_classification(model_name: str, model: nn.Module, neighb
     :param time_gap: int, time gap for neighbors to compute node features
     :return:
     """
-    if model_name in ['DyRep', 'TGAT', 'TGN', 'CAWN', 'TCL', 'GraphMixer', 'DyGFormer']:
+    if model_name in ['DyRep', 'TGAT', 'TGN', 'CAWN', 'TCL', 'GraphMixer', 'DyGFormer', 'ComCo']:
         # evaluation phase use all the graph information
         model[0].set_neighbor_sampler(neighbor_sampler)
 
@@ -164,6 +169,14 @@ def evaluate_model_node_classification(model_name: str, model: nn.Module, neighb
                     model[0].compute_src_dst_node_temporal_embeddings(src_node_ids=batch_src_node_ids,
                                                                       dst_node_ids=batch_dst_node_ids,
                                                                       node_interact_times=batch_node_interact_times)
+            elif model_name in ['ComCo']:
+                batch_src_node_embeddings, batch_dst_node_embeddings = \
+                    model[0].compute_src_dst_node_temporal_embeddings(batch_edge_ids, batch_idx,
+                                                                src_node_ids=batch_src_node_ids,
+                                                                dst_node_ids=batch_dst_node_ids,
+                                                                node_interact_times=batch_node_interact_times,
+                                                                edges_are_positive='pos')
+
             else:
                 raise ValueError(f"Wrong value for model_name {model_name}!")
             # get predicted probabilities, shape (batch_size, )
